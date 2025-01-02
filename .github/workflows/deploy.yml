@@ -1,0 +1,41 @@
+name: api-deployment
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  api-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20' # You might want to change this
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build project
+        run: npm run build
+      
+      - name: Upload code to EC2 # Uploads node_modules and dist to /home/ubuntu/api
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          rsync -avz -e 'ssh -o StrictHostKeyChecking=no' --delete node_modules dist ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/home/ubuntu/api
+
+      - name: Restart the application
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} '
+            export NVM_DIR="$HOME/.nvm" &&
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" &&
+            nvm use 20.9.0 &&
+            /home/ubuntu/.nvm/versions/node/v20.9.0/bin/pm2 restart all
+          '
